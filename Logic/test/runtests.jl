@@ -86,4 +86,11 @@ using Logic
         @test expected == actual
     end
 
+    @testset "parseandpolish tests" begin
+        expr = "∧ ¬ A ⟹ B ¬ D"
+        expected = @proposition ((¬A) ∧ (B ⟹ (¬D)))
+        actual = parsepolish(expr)
+        @test expected == actual
+    end
+
 end

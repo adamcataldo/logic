@@ -112,12 +112,12 @@ show(io::IO, l::Implies) = print(io, "($(l.left) ⟹ $(l.right))")
 show(io::IO, l::Iff) = print(io, "($(l.left) ⟺ $(l.right))")
 show(io::IO, l::Variable) = print(io, string(l.name))
 
-function parseexpr(tokens, pos=1)
+function parseexpr(tokens, pos=1)::Tuple{Proposition, Int}
     expr, pos = parseiff(tokens, pos)
     return expr, pos
 end
 
-function parseiff(tokens, pos)
+function parseiff(tokens, pos)::Tuple{Proposition, Int}
     left, pos = parseimplies(tokens, pos)
     while pos <= length(tokens) && typeof(tokens[pos]) == LRArrow
         pos += 1
@@ -127,7 +127,7 @@ function parseiff(tokens, pos)
     return left, pos
 end
 
-function parseimplies(tokens, pos)
+function parseimplies(tokens, pos)::Tuple{Proposition, Int}
     left, pos = parseor(tokens, pos)
     while pos <= length(tokens) && typeof(tokens[pos]) == RArrow
         pos += 1
@@ -137,7 +137,7 @@ function parseimplies(tokens, pos)
     return left, pos
 end
 
-function parseor(tokens, pos)
+function parseor(tokens, pos)::Tuple{Proposition, Int}
     left, pos = parseand(tokens, pos)
     while pos <= length(tokens) && typeof(tokens[pos]) == Vee
         pos += 1
@@ -147,7 +147,7 @@ function parseor(tokens, pos)
     return left, pos
 end
 
-function parseand(tokens, pos)
+function parseand(tokens, pos)::Tuple{Proposition, Int}
     left, pos = parsenot(tokens, pos)
     while pos <= length(tokens) && typeof(tokens[pos]) == Wedge
         pos += 1
@@ -157,7 +157,7 @@ function parseand(tokens, pos)
     return left, pos
 end
 
-function parsenot(tokens, pos)
+function parsenot(tokens, pos)::Tuple{Proposition, Int}
     if pos <= length(tokens) && typeof(tokens[pos]) == Neg
         pos += 1
         expr, pos = parsenot(tokens, pos)
@@ -167,7 +167,7 @@ function parsenot(tokens, pos)
     end
 end
 
-function parseprimary(tokens, pos)
+function parseprimary(tokens, pos)::Tuple{Proposition, Int}
     if typeof(tokens[pos]) == Ident
         var = Variable(Symbol(tokens[pos].name))
         pos += 1
@@ -201,6 +201,42 @@ macro proposition(exp)
     return :( parseprop(string($(QuoteNode(exp)))) )
 end
 
+function _parsepolish(tokens::Vector{<:Token}, i::Int64)::Tuple{Proposition, Int64}
+    if i > length(tokens)
+        error("invalid statement form")
+    end
+    next = tokens[i]
+    if next isa Ident
+        return Variable(Symbol(next.name)), i+1
+    elseif next isa Neg
+        expr, pos = _parsepolish(tokens, i+1)
+        return Not(expr), pos
+    elseif next isa Wedge
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return And(left, right), pos
+    elseif next isa Vee
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Or(left, right), pos
+    elseif next isa RArrow
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Implies(left, right), pos
+    elseif next isa LRArrow
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Iff(left, right), pos
+    else
+        error("unable to process token $next")
+    end
+end
+
+function parsepolish(str::String)::Proposition
+    tokens = lexer(str)
+    _parsepolish(tokens, 1)[1]
+end
+
 export Proposition
 export And
 export Or
@@ -210,3 +246,4 @@ export Iff
 export Variable
 export parseprop
 export @proposition
+export parsepolish
