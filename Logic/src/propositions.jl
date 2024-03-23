@@ -1,90 +1,3 @@
-import Base: ==, show, isidentifier
-
-abstract type Proposition end
-
-# Define types for logic connectives
-struct And <: Proposition
-    left::Proposition
-    right::Proposition
-end
-
-==(x::And, y::And)::Bool = (x.left == y.left) && (x.right == y.right)
-
-show(io::IO, l::And) = print(io, "($(l.left) ∧ $(l.right))")
-
-struct Or <: Proposition
-    left::Proposition
-    right::Proposition
-end
-
-==(x::Or, y::Or)::Bool = (x.left == y.left) && (x.right == y.right)
-
-show(io::IO, l::Or) = print(io, "($(l.left) ∨ $(l.right))")
-
-
-struct Not <: Proposition
-    expr::Proposition
-end
-
-==(x::Not, y::Not)::Bool = x.expr == y.expr
-
-show(io::IO, l::Not) = print(io, "(¬$(l.expr))")
-
-struct Implies <: Proposition
-    left::Proposition
-    right::Proposition
-end
-
-==(x::Implies, y::Implies)::Bool = (x.left == y.left) && (x.right == y.right)
-
-show(io::IO, l::Implies) = print(io, "($(l.left) ⟹  $(l.right))")
-
-struct Iff <: Proposition
-    left::Proposition
-    right::Proposition
-end
-
-==(x::Iff, y::Iff)::Bool = (x.left == y.left) && (x.right == y.right)
-
-show(io::IO, l::Iff) = print(io, "($(l.left) ⟺  $(l.right))")
-
-# Define a type for statement variables
-struct Variable <: Proposition
-    name::Symbol
-end
-
-==(x::Variable, y::Variable)::Bool = x.name == y.name
-
-show(io::IO, l::Variable) = print(io, string(l.name))
-
-function parseprop(expr::Union{Symbol, Expr})::Proposition
-    if expr isa Symbol
-        if !isidentifier(expr)
-            error("invalid identifier $expr")
-        end
-        return Variable(expr)
-    elseif expr.head == :call
-        if length(expr.args) == 2 && expr.args[1] == :¬
-            return Not(parseprop(expr.args[2]))
-        elseif length(expr.args) == 3
-            if expr.args[1] == :∨
-                return Or(parseprop(expr.args[2]), parseprop(expr.args[3]))
-            elseif expr.args[1] == :∧
-                return And(parseprop(expr.args[2]), parseprop(expr.args[3]))
-            elseif expr.args[1] == :⟹
-                return Implies(parseprop(expr.args[2]), parseprop(expr.args[3]))
-            elseif expr.args[1] == :⟺
-                return Iff(parseprop(expr.args[2]), parseprop(expr.args[3]))
-            end
-        end
-    end
-    error("failed to parse expression: $expression")
-end
-
-macro proposition(exp)
-    return parseprop(:( $exp ))
-end
-
 const Assignment = Dict{Symbol, Bool}
 
 function evaluate(prop::T, assign::Assignment)::Bool where T <: Proposition
@@ -139,15 +52,136 @@ function istautology(prop::T) where T <: Proposition
     return true
 end
 
-export Proposition
-export And
-export Or
-export Not
-export Implies
-export Iff
-export Variable
-export parseprop
-export @proposition
+function logicallyimplies(a::T, b::S)::Bool where {T<:Proposition, S<:Proposition}
+    istautology(Implies(a, b))
+end
+
+function ⟹(a::T, b::S)::Bool where {T<:Proposition, S<:Proposition}
+    logicallyimplies(a, b)
+end
+
+function logicallyequivalent(a::T, b::S)::Bool where {
+    T<:Proposition, 
+    S<:Proposition
+}
+    istautology(Iff(a, b))
+end
+
+function ⟺(a::T, b::S)::Bool where {T<:Proposition, S<:Proposition}
+    logicallyequivalent(a, b)
+end
+
+function iscontradiction(a::T)::Bool where T <: Proposition
+    istautology(Not(a))
+end
+
+function substitute(prop::T, match::U, replacement::V)::Proposition where {
+    T<:Proposition,
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    elseif prop isa Not
+        return Not(substitute(prop.expr, match, replacement))
+    elseif prop isa Or
+        return Or(
+            substitute(prop.left, match, replacement), 
+            substitute(prop.right, match, replacement)
+        )
+    elseif prop isa And
+        return And(
+            substitute(prop.left, match, replacement),
+            substitute(prop.right, match, replacement)
+        )
+    elseif prop isa Implies
+        return Implies(
+            substitute(prop.left, match, replacement), 
+            substitute(prop.right, match, replacement)
+        )
+    elseif prop isa Iff
+        return Iff(
+            substitute(prop.left, match, replacement), 
+            substitute(prop.right, match, replacement)
+        )
+    else
+        return prop
+    end
+end
+
+struct Nil <: Proposition end
+
+function isstronger(a::Proposition, b::Proposition)::Bool
+    precedence = Dict(
+        Nil => 0,
+        Iff => 1,
+        Implies => 2,
+        Or => 3,
+        And => 4,
+        Not => 5,
+        Variable => 6
+    )
+    precedence[typeof(a)] > precedence[typeof(b)]
+end
+
+function _minparens(prop::Proposition, parent::Proposition)::String
+    base = ""
+    if prop isa Variable
+        base = string(prop.name)
+    elseif prop isa Not
+        base = "¬" * _minparens(prop.expr, prop)
+    elseif prop isa And
+        base = _minparens(prop.left, prop) * " ∧ " * _minparens(prop.right, prop)
+    elseif prop isa Or
+        base = _minparens(prop.left, prop) * " ∨ " * _minparens(prop.right, prop)
+    elseif prop isa Implies
+        base = _minparens(prop.left, prop) * " ⟹ " * _minparens(prop.right, prop)
+    elseif prop isa Iff
+        base = _minparens(prop.left, prop) * " ⟺ " * _minparens(prop.right, prop)
+    else
+        error("invalid proposition type $(typeof(prop))")
+    end
+    if isstronger(prop, parent)
+        return base
+    else
+        return "($base)"
+    end
+end
+
+function minparens(prop::Proposition)::String
+    _minparens(prop, Nil())
+end
+
+function _polish(prop::Proposition)::String
+    if prop isa Variable
+        return string(prop.name) * " "
+    elseif prop isa Not
+        return "¬ " * _polish(prop.expr)
+    elseif prop isa And
+        return "∧ " * _polish(prop.left) * _polish(prop.right)
+    elseif prop isa Or
+        return "∨ " * _polish(prop.left) * _polish(prop.right)
+    elseif prop isa Implies
+        return "⟹ " * _polish(prop.left) * _polish(prop.right)
+    elseif prop isa Iff
+        return "⟺ " * _polish(prop.left) * _polish(prop.right)
+    else
+        error("invalid proposition type $(typeof(prop))")
+    end  
+end
+
+function polish(prop::Proposition)::String
+    rstrip(_polish(prop))
+end
+
 export Assignment
 export evaluate
 export istautology
+export logicallyimplies
+export ⟹
+export logicallyequivalent
+export ⟺
+export iscontradiction
+export substitute
+export minparens
+export polish
