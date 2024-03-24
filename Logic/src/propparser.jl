@@ -129,7 +129,9 @@ end
 
 ==(x::Variable, y::Variable)::Bool = x.name == y.name
 ==(x::Not, y::Not)::Bool = x.expr == y.expr
-==(x::BinaryProposition, y::BinaryProposition)::Bool = (x.left == y.left) && (x.right == y.right)
+function ==(x::BinaryProposition, y::BinaryProposition)::Bool
+    (typeof(x) == typeof(y)) && (x.left == y.left) && (x.right == y.right)
+end
 
 function symbol(prop::And)::String
     "∧"

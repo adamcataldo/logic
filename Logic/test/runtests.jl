@@ -114,4 +114,26 @@ using Logic
         @test expected == actual
     end
 
+    @testset "fromfunction tests" begin
+        function alwaystrue()
+            true
+        end
+        proptrue = @proposition A ∨ ¬A
+        @test proptrue == fromfunction(alwaystrue)
+        function alwaysfalse()
+            false
+        end
+        propfalse = @proposition A ∧ ¬A
+        @test propfalse == fromfunction(alwaysfalse)
+        function mvalwaysfalse(_, _, _)
+            false
+        end
+        @test propfalse == fromfunction(mvalwaysfalse)
+        function twotrue(a, b, c)
+            a + b + c == 2
+        end
+        proptwotrue = @proposition (¬A ∧ B ∧ C) ∨ (A ∧ ¬B ∧ C) ∨ (A ∧ B ∧ ¬C)
+        @test proptwotrue ⟺ fromfunction(twotrue)
+    end
+
 end

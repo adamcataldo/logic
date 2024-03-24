@@ -47,15 +47,21 @@ function getvars(prop::BinaryProposition)::Set{Symbol}
     union(getvars(prop.left), getvars(prop.right))
 end
 
-function istautology(prop::T) where T <: Proposition
-    vars = [v for v in getvars(prop)]
-    n = length(vars)
+function truthtable(numvars::Int64)::Matrix{Bool}
+    n = numvars
     assignments = falses(2^n, n)
     for i in 1:2^n
         for j in 1:n
             assignments[i, j] = (i-1) & (1 << (n-j)) != 0
         end
     end
+    assignments
+end
+
+function istautology(prop::T) where T <: Proposition
+    vars = [v for v in getvars(prop)]
+    n = length(vars)
+    assignments = truthtable(n)
     for i in 1:2^n
         assign = Dict(zip(vars, assignments[i, :]))
         if !(evaluate(prop, assign))
@@ -204,6 +210,46 @@ function polish(prop::Proposition)::String
     rstrip(_polish(prop))
 end
 
+function gensymbols(n::Int64)::Vector{Symbol}
+    syms = Symbol[]
+    for i in 1:n
+        num = i
+        str = ""
+        while num > 0
+            mod = (num - 1) % 26
+            str = Char('A' + mod) * str
+            num = (num - mod) ÷ 26
+        end
+        push!(syms, Symbol(str))
+    end
+    return syms
+end
+
+function fromfunction(fun::Function)::Proposition
+    n = length(methods(fun)[1].sig.parameters) - 1
+    if n == 0
+        if fun()
+            return Or(Variable(:A), Not(Variable(:A)))
+        else
+            return And(Variable(:A), Not(Variable(:A)))
+        end
+    end
+    assignments = truthtable(n)
+    symbols = gensymbols(n)
+    terms = Proposition[]
+    for assignment in eachrow(assignments)
+        if fun(assignment...)
+            conjuncts = map(a -> a[1] ? Variable(a[2]) : Not(Variable(a[2])), zip(assignment, symbols))
+            term = reduce(And, conjuncts)
+            push!(terms, term)
+        end
+    end
+    if isempty(terms)
+        return And(Variable(:A), Not(Variable(:A)))
+    end
+    reduce(Or, terms)
+end
+
 export Assignment
 export evaluate
 export istautology
@@ -216,3 +262,4 @@ export substitute
 export minparens
 export polish
 export deduce
+export fromfunction
