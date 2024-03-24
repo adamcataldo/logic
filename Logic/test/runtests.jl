@@ -26,6 +26,18 @@ using Logic
         expected = parseprop(expr)
         actual = @proposition (¬A ∨ B) ∧ (C ⟹ D) ⟺ E
         @test expected == actual
+        withxor = @proposition A ∧ B ⊕ C ∨ D
+        expectedparse = Or(
+            Xor(
+                And(
+                    Variable(:A),
+                    Variable(:B)
+                ),
+                Variable(:C)
+            ),
+            Variable(:D)
+        )
+        @test expectedparse == withxor
     end
 
     @testset "evaluate tests" begin

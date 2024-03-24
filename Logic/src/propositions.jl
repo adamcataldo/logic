@@ -1,37 +1,43 @@
 const Assignment = Dict{Symbol, Bool}
 
-function evaluate(prop::T, assign::Assignment)::Bool where T <: Proposition
-    if prop isa Variable
-        return assign[prop.name]
-    elseif prop isa Not
-        return !evaluate(prop.expr, assign)
-    elseif prop isa And
-        return evaluate(prop.left, assign) && evaluate(prop.right, assign)
-    elseif prop isa Or
-        return evaluate(prop.left, assign) || evaluate(prop.right, assign)
-    elseif prop isa Implies
-        return !evaluate(prop.left, assign) || evaluate(prop.right, assign)
-    elseif prop isa Iff
-        return evaluate(prop.left, assign) == evaluate(prop.right, assign)
-    end
-    error("unrecognized proposition type $(typeof(prop))")
+function evaluate(prop::Variable, assign::Assignment)::Bool
+    assign[prop.name]
 end
 
-function getvars(prop::T)::Set{Symbol} where T <: Proposition
-    if prop isa Variable
-        return Set([prop.name])
-    elseif prop isa Not
-        return getvars(prop.expr)
-    elseif prop isa And
-        return union(getvars(prop.left), getvars(prop.right))
-    elseif prop isa Or
-        return union(getvars(prop.left), getvars(prop.right))
-    elseif prop isa Implies
-        return union(getvars(prop.left), getvars(prop.right))
-    elseif prop isa Iff
-        return union(getvars(prop.left), getvars(prop.right))
-    end
-    error("unrecognized proposition type $(typeof(prop))")
+function evaluate(prop::Not, assign::Assignment)::Bool
+    !evaluate(prop.expr, assign)
+end
+
+function evaluate(prop::And, assign::Assignment)::Bool
+    evaluate(prop.left, assign) && evaluate(prop.right, assign)
+end
+
+function evaluate(prop::Xor, assign::Assignment)::Bool
+    evaluate(prop.left, assign) ⊻ evaluate(prop.right, assign)
+end
+
+function evaluate(prop::Or, assign::Assignment)::Bool
+    evaluate(prop.left, assign) || evaluate(prop.right, assign)
+end
+
+function evaluate(prop::Implies, assign::Assignment)::Bool
+    !evaluate(prop.left, assign) || evaluate(prop.right, assign)
+end
+
+function evaluate(prop::Iff, assign::Assignment)::Bool
+    evaluate(prop.left, assign) == evaluate(prop.right, assign)
+end
+
+function getvars(prop::Variable)::Set{Symbol}
+    Set([prop.name])
+end
+
+function getvars(prop::Not)::Set{Symbol}
+    getvars(prop.expr)
+end
+
+function getvars(prop::Union{And,Xor,Or,Implies,Iff})::Set{Symbol}
+    union(getvars(prop.left), getvars(prop.right))
 end
 
 function istautology(prop::T) where T <: Proposition
@@ -75,37 +81,81 @@ function iscontradiction(a::T)::Bool where T <: Proposition
     istautology(Not(a))
 end
 
-function substitute(prop::T, match::U, replacement::V)::Proposition where {
-    T<:Proposition,
+function substitute(prop::Proposition, match::U, replacement::V)::Proposition where {
     U<:Proposition,
     V<:Proposition
 }
     if prop == match
         return replacement
-    elseif prop isa Not
+    else
+        return prop
+    end
+end
+
+function substitute(prop::Not, match::U, replacement::V)::Proposition where {
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    else
         return Not(substitute(prop.expr, match, replacement))
-    elseif prop isa Or
+    end
+end
+
+function substitute(prop::Or, match::U, replacement::V)::Proposition where {
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    else
         return Or(
             substitute(prop.left, match, replacement), 
             substitute(prop.right, match, replacement)
         )
-    elseif prop isa And
+    end
+end
+
+function substitute(prop::And, match::U, replacement::V)::Proposition where {
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    else
         return And(
-            substitute(prop.left, match, replacement),
+            substitute(prop.left, match, replacement), 
             substitute(prop.right, match, replacement)
         )
-    elseif prop isa Implies
+    end
+end
+
+function substitute(prop::Implies, match::U, replacement::V)::Proposition where {
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    else
         return Implies(
             substitute(prop.left, match, replacement), 
             substitute(prop.right, match, replacement)
         )
-    elseif prop isa Iff
+    end
+end
+
+function substitute(prop::Iff, match::U, replacement::V)::Proposition where {
+    U<:Proposition,
+    V<:Proposition
+}
+    if prop == match
+        return replacement
+    else
         return Iff(
             substitute(prop.left, match, replacement), 
             substitute(prop.right, match, replacement)
         )
-    else
-        return prop
     end
 end
 
@@ -124,23 +174,7 @@ function isstronger(a::Proposition, b::Proposition)::Bool
     precedence[typeof(a)] > precedence[typeof(b)]
 end
 
-function _minparens(prop::Proposition, parent::Proposition)::String
-    base = ""
-    if prop isa Variable
-        base = string(prop.name)
-    elseif prop isa Not
-        base = "¬" * _minparens(prop.expr, prop)
-    elseif prop isa And
-        base = _minparens(prop.left, prop) * " ∧ " * _minparens(prop.right, prop)
-    elseif prop isa Or
-        base = _minparens(prop.left, prop) * " ∨ " * _minparens(prop.right, prop)
-    elseif prop isa Implies
-        base = _minparens(prop.left, prop) * " ⟹ " * _minparens(prop.right, prop)
-    elseif prop isa Iff
-        base = _minparens(prop.left, prop) * " ⟺ " * _minparens(prop.right, prop)
-    else
-        error("invalid proposition type $(typeof(prop))")
-    end
+function maybeparen(base::String, prop::Proposition, parent::Proposition)::String
     if isstronger(prop, parent)
         return base
     else
@@ -148,26 +182,71 @@ function _minparens(prop::Proposition, parent::Proposition)::String
     end
 end
 
+function _minparens(prop::Variable, parent::Proposition)::String
+    base = string(prop.name)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::Not, parent::Proposition)::String
+    base = "¬" * _minparens(prop.expr, prop)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::And, parent::Proposition)::String
+    base = _minparens(prop.left, prop) * " ∧ " * _minparens(prop.right, prop)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::Xor, parent::Proposition)::String
+    base = _minparens(prop.left, prop) * " ⊕ " * _minparens(prop.right, prop)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::Or, parent::Proposition)::String
+    base = _minparens(prop.left, prop) * " ∨ " * _minparens(prop.right, prop)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::Implies, parent::Proposition)::String
+    base = _minparens(prop.left, prop) * " ⟹ " * _minparens(prop.right, prop)
+    maybeparen(base, prop, parent)
+end
+
+function _minparens(prop::Iff, parent::Proposition)::String
+    base = _minparens(prop.left, prop) * " ⟺ " * _minparens(prop.right, prop)
+    maybeparen(base, prop, parent)
+end
+
 function minparens(prop::Proposition)::String
     _minparens(prop, Nil())
 end
 
-function _polish(prop::Proposition)::String
-    if prop isa Variable
-        return string(prop.name) * " "
-    elseif prop isa Not
-        return "¬ " * _polish(prop.expr)
-    elseif prop isa And
-        return "∧ " * _polish(prop.left) * _polish(prop.right)
-    elseif prop isa Or
-        return "∨ " * _polish(prop.left) * _polish(prop.right)
-    elseif prop isa Implies
-        return "⟹ " * _polish(prop.left) * _polish(prop.right)
-    elseif prop isa Iff
-        return "⟺ " * _polish(prop.left) * _polish(prop.right)
-    else
-        error("invalid proposition type $(typeof(prop))")
-    end  
+function _polish(prop::Variable)::String
+    string(prop.name) * " "
+end
+
+function _polish(prop::Not)::String
+    "¬ " * _polish(prop.expr)
+end
+
+function _polish(prop::And)::String
+    "∧ " * _polish(prop.left) * _polish(prop.right)
+end
+
+function _polish(prop::Xor)::String
+    "⊕ " * _polish(prop.left) * _polish(prop.right)
+end
+
+function _polish(prop::Or)::String
+    "∨ " * _polish(prop.left) * _polish(prop.right)
+end
+
+function _polish(prop::Implies)::String
+    "⟹ " * _polish(prop.left) * _polish(prop.right)
+end
+
+function _polish(prop::Iff)::String
+    "⟺ " * _polish(prop.left) * _polish(prop.right)
 end
 
 function polish(prop::Proposition)::String
@@ -185,3 +264,4 @@ export iscontradiction
 export substitute
 export minparens
 export polish
+export deduce

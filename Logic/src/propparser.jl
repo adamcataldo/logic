@@ -6,6 +6,7 @@ abstract type Token end
 struct Neg <: Token end
 struct Vee <: Token end
 struct Wedge <: Token end
+struct Oplus <: Token end
 struct RArrow <: Token end
 struct LRArrow <: Token end
 struct LParen <: Token end
@@ -17,6 +18,7 @@ end
 ==(x::Neg, y::Neg)::Bool = true
 ==(x::Vee, y::Vee)::Bool = true
 ==(x::Wedge, y::Wedge)::Bool = true
+==(x::Oplus, y::Oplus)::Bool = true
 ==(x::RArrow, y::RArrow)::Bool = true
 ==(x::LRArrow, y::LRArrow)::Bool = true
 ==(x::LParen, y::RParen)::Bool = true
@@ -31,6 +33,7 @@ function lexer(input::String)::Vector{<:Token}
         '¬' => Neg(),
         '∨' => Vee(),
         '∧' => Wedge(),
+        '⊕' => Oplus(),
         '⟹' => RArrow(),
         '⟺' => LRArrow(),
         '(' => LParen(),
@@ -80,6 +83,11 @@ struct Or <: Proposition
     right::Proposition
 end
 
+struct Xor <: Proposition
+    left::Proposition
+    right::Proposition
+end
+
 struct Not <: Proposition
     expr::Proposition
 end
@@ -100,6 +108,7 @@ end
 
 ==(x::And, y::And)::Bool = (x.left == y.left) && (x.right == y.right)
 ==(x::Or, y::Or)::Bool = (x.left == y.left) && (x.right == y.right)
+==(x::Xor, y::Xor)::Bool = (x.left == y.left) && (x.right == y.right)
 ==(x::Not, y::Not)::Bool = x.expr == y.expr
 ==(x::Implies, y::Implies)::Bool = (x.left == y.left) && (x.right == y.right)
 ==(x::Iff, y::Iff)::Bool = (x.left == y.left) && (x.right == y.right)
@@ -107,6 +116,7 @@ end
 
 show(io::IO, l::And) = print(io, "($(l.left) ∧ $(l.right))")
 show(io::IO, l::Or) = print(io, "($(l.left) ∨ $(l.right))")
+show(io::IO, l::Xor) = print(io, "($(l.left) ⊕ $(l.right))")
 show(io::IO, l::Not) = print(io, "(¬$(l.expr))")
 show(io::IO, l::Implies) = print(io, "($(l.left) ⟹ $(l.right))")
 show(io::IO, l::Iff) = print(io, "($(l.left) ⟺ $(l.right))")
@@ -138,11 +148,21 @@ function parseimplies(tokens, pos)::Tuple{Proposition, Int}
 end
 
 function parseor(tokens, pos)::Tuple{Proposition, Int}
-    left, pos = parseand(tokens, pos)
+    left, pos = parsexor(tokens, pos)
     while pos <= length(tokens) && typeof(tokens[pos]) == Vee
         pos += 1
-        right, pos = parseand(tokens, pos)
+        right, pos = parsexor(tokens, pos)
         left = Or(left, right)
+    end
+    return left, pos
+end
+
+function parsexor(tokens, pos)::Tuple{Proposition, Int}
+    left, pos = parseand(tokens, pos)
+    while pos <= length(tokens) && typeof(tokens[pos]) == Oplus
+        pos += 1
+        right, pos = parseand(tokens, pos)
+        left = Xor(left, right)
     end
     return left, pos
 end
@@ -215,6 +235,41 @@ function _parsepolish(tokens::Vector{<:Token}, i::Int64)::Tuple{Proposition, Int
         left, pos = _parsepolish(tokens, i+1)
         right, pos = _parsepolish(tokens, pos)
         return And(left, right), pos
+    elseif next isa Oplus
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Xor(left, right), pos
+    elseif next isa Vee
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Or(left, right), pos
+    elseif next isa RArrow
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Implies(left, right), pos
+    elseif next isa LRArrow
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return Iff(left, right), pos
+    else
+        error("unable to process token $next")
+    end
+end
+
+function _parsepolish(tokens::Vector{<:Token}, i::Int64)::Tuple{Proposition, Int64}
+    if i > length(tokens)
+        error("invalid statement form")
+    end
+    next = tokens[i]
+    if next isa Ident
+        return Variable(Symbol(next.name)), i+1
+    elseif next isa Neg
+        expr, pos = _parsepolish(tokens, i+1)
+        return Not(expr), pos
+    elseif next isa Wedge
+        left, pos = _parsepolish(tokens, i+1)
+        right, pos = _parsepolish(tokens, pos)
+        return And(left, right), pos
     elseif next isa Vee
         left, pos = _parsepolish(tokens, i+1)
         right, pos = _parsepolish(tokens, pos)
@@ -240,6 +295,7 @@ end
 export Proposition
 export And
 export Or
+export Xor
 export Not
 export Implies
 export Iff
