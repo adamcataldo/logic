@@ -12,6 +12,10 @@ function evaluate(prop::And, assign::Assignment)::Bool
     evaluate(prop.left, assign) && evaluate(prop.right, assign)
 end
 
+function evaluate(prop::Nand, assign::Assignment)::Bool
+    evaluate(prop.left, assign) ⊼ evaluate(prop.right, assign)
+end
+
 function evaluate(prop::Xor, assign::Assignment)::Bool
     evaluate(prop.left, assign) ⊻ evaluate(prop.right, assign)
 end
@@ -20,6 +24,9 @@ function evaluate(prop::Or, assign::Assignment)::Bool
     evaluate(prop.left, assign) || evaluate(prop.right, assign)
 end
 
+function evaluate(prop::Nor, assign::Assignment)::Bool
+    evaluate(prop.left, assign) ⊽ evaluate(prop.right, assign)
+end
 function evaluate(prop::Implies, assign::Assignment)::Bool
     !evaluate(prop.left, assign) || evaluate(prop.right, assign)
 end
@@ -36,7 +43,7 @@ function getvars(prop::Not)::Set{Symbol}
     getvars(prop.expr)
 end
 
-function getvars(prop::Union{And,Xor,Or,Implies,Iff})::Set{Symbol}
+function getvars(prop::BinaryProposition)::Set{Symbol}
     union(getvars(prop.left), getvars(prop.right))
 end
 
@@ -81,7 +88,7 @@ function iscontradiction(a::T)::Bool where T <: Proposition
     istautology(Not(a))
 end
 
-function substitute(prop::Proposition, match::U, replacement::V)::Proposition where {
+function substitute(prop::Variable, match::U, replacement::V)::Proposition where {
     U<:Proposition,
     V<:Proposition
 }
@@ -103,56 +110,14 @@ function substitute(prop::Not, match::U, replacement::V)::Proposition where {
     end
 end
 
-function substitute(prop::Or, match::U, replacement::V)::Proposition where {
+function substitute(prop::BinaryProposition, match::U, replacement::V)::Proposition where {
     U<:Proposition,
     V<:Proposition
 }
     if prop == match
         return replacement
     else
-        return Or(
-            substitute(prop.left, match, replacement), 
-            substitute(prop.right, match, replacement)
-        )
-    end
-end
-
-function substitute(prop::And, match::U, replacement::V)::Proposition where {
-    U<:Proposition,
-    V<:Proposition
-}
-    if prop == match
-        return replacement
-    else
-        return And(
-            substitute(prop.left, match, replacement), 
-            substitute(prop.right, match, replacement)
-        )
-    end
-end
-
-function substitute(prop::Implies, match::U, replacement::V)::Proposition where {
-    U<:Proposition,
-    V<:Proposition
-}
-    if prop == match
-        return replacement
-    else
-        return Implies(
-            substitute(prop.left, match, replacement), 
-            substitute(prop.right, match, replacement)
-        )
-    end
-end
-
-function substitute(prop::Iff, match::U, replacement::V)::Proposition where {
-    U<:Proposition,
-    V<:Proposition
-}
-    if prop == match
-        return replacement
-    else
-        return Iff(
+        return typeof(prop)(
             substitute(prop.left, match, replacement), 
             substitute(prop.right, match, replacement)
         )
@@ -192,6 +157,8 @@ function _minparens(prop::Not, parent::Proposition)::String
     maybeparen(base, prop, parent)
 end
 
+#Fixme:: handle binary propositions
+
 function _minparens(prop::And, parent::Proposition)::String
     base = _minparens(prop.left, prop) * " ∧ " * _minparens(prop.right, prop)
     maybeparen(base, prop, parent)
@@ -229,24 +196,8 @@ function _polish(prop::Not)::String
     "¬ " * _polish(prop.expr)
 end
 
-function _polish(prop::And)::String
-    "∧ " * _polish(prop.left) * _polish(prop.right)
-end
-
-function _polish(prop::Xor)::String
-    "⊕ " * _polish(prop.left) * _polish(prop.right)
-end
-
-function _polish(prop::Or)::String
-    "∨ " * _polish(prop.left) * _polish(prop.right)
-end
-
-function _polish(prop::Implies)::String
-    "⟹ " * _polish(prop.left) * _polish(prop.right)
-end
-
-function _polish(prop::Iff)::String
-    "⟺ " * _polish(prop.left) * _polish(prop.right)
+function _polish(prop::BinaryProposition)::String
+    "$(symbol(prop)) " * _polish(prop.left) * _polish(prop.right)
 end
 
 function polish(prop::Proposition)::String

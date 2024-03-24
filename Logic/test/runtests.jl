@@ -38,6 +38,15 @@ using Logic
             Variable(:D)
         )
         @test expectedparse == withxor
+        nornandexpr = @proposition A | B ↓ C
+        expectedn = Nor(
+            Nand(
+                Variable(:A),
+                Variable(:B)
+            ),
+            Variable(:C)
+        )
+        @test expectedn == nornandexpr
     end
 
     @testset "evaluate tests" begin
