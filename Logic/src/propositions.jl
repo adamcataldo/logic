@@ -250,6 +250,30 @@ function fromfunction(fun::Function)::Proposition
     reduce(Or, terms)
 end
 
+function fromtruthtable(inputs::Matrix{Bool}, outputs::Vector{Bool})::Proposition
+    (rows, n) = size(inputs)
+    if (rows != 2^n)
+        error("should be $(2^n) rows but found $rows")
+    end
+    if length(outputs) != 2^n
+        error("should be $(2^n) outputs but found $(length(outputs))")
+    end
+    symbols = gensymbols(n)
+    terms = Proposition[]
+    for (i, output) in enumerate(outputs)
+        if output
+            row = inputs[i, :]
+            conjuncts = map(a -> a[1] ? Variable(a[2]) : Not(Variable(a[2])), zip(row, symbols))
+            term = reduce(And, conjuncts)
+            push!(terms, term)
+        end
+    end
+    if isempty(terms)
+        return And(Variable(:A), Not(Variable(:A)))
+    end
+    reduce(Or, terms)
+end
+
 export Assignment
 export evaluate
 export istautology
@@ -263,3 +287,4 @@ export minparens
 export polish
 export deduce
 export fromfunction
+export fromtruthtable
